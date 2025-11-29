@@ -7,11 +7,44 @@ const DailyRoutineTracker = () => {
   const [prayerTimes, setPrayerTimes] = useState({});
   const [tasks, setTasks] = useState({});
   const [regime, setRegime] = useState([]);
-  const [studyTimetable, setStudyTimetable] = useState([]);
+  const [dailyStudyList, setDailyStudyList] = useState({}); // { date: [items] }
   const [editingRegime, setEditingRegime] = useState(false);
   const [editingStudy, setEditingStudy] = useState(false);
   const [newRegimeItem, setNewRegimeItem] = useState('');
-  const [newStudyItem, setNewStudyItem] = useState({ day: '', time: '', subject: '' });
+  const [newStudyItem, setNewStudyItem] = useState('');
+
+  // Weekly School Schedule (Fixed)
+  const weeklySchedule = {
+    Sunday: [
+      { time: '8:30-10:00', module: 'Deep Learning', type: 'Lecture', faculty: 'S. Berrani', location: 'Amphi 4' }
+    ],
+    Monday: [
+      { time: '8:30-10:00', module: 'Selected Topics in AI/Technology', type: 'Lecture', faculty: 'M. Iftene', location: 'Amphi 7' },
+      { time: '10:10-11:40', module: 'Natural Language Processing', type: 'Lecture', faculty: 'A. Guessoum', location: 'Amphi 6' },
+      { time: '11:50-13:20', module: 'Deep Learning', type: 'Lab', faculty: 'S. Berrani', location: 'Lab11' },
+      { time: '13:30-15:00', module: 'Deep Learning', type: 'Lab', faculty: 'S. Berrani', location: 'Lab11' }
+    ],
+    Tuesday: [
+      { time: '8:30-10:00', module: 'Natural Language Processing', type: 'Lab', faculty: 'Z. Djouamai', location: 'Lab3' },
+      { time: '10:10-11:40', module: 'Natural Language Processing', type: 'Lab', faculty: 'Z. Djouamai', location: 'Lab3' },
+      { time: '11:50-13:20', module: 'Human Computer Interaction', type: 'Lab', faculty: 'C. Djeddi', location: 'Lab2' },
+      { time: '13:30-15:00', module: 'Selected Topics in AI/Technology', type: 'Lab', faculty: 'M. Iftene', location: 'Lab5' }
+    ],
+    Wednesday: [
+      { time: '8:30-10:00', module: 'Natural Language Processing', type: 'Lecture', faculty: 'A. Guessoum', location: 'Amphi 6' },
+      { time: '10:10-11:40', module: 'AI and Ethics', type: 'Lecture', faculty: 'N. Ouslimani', location: 'Amphi 5' },
+      { time: '11:50-13:20', module: 'Introduction to Mobile Robotics', type: 'Lecture', faculty: 'M.Tadjine', location: 'Amphi 1' },
+      { time: '13:30-15:00', module: 'Wireless Communication Networks and Systems', type: 'Lab', faculty: 'H. Tayakout', location: 'Lab1' }
+    ],
+    Thursday: [
+      { time: '8:30-10:00', module: 'Wireless Communication Networks and Systems', type: 'Lecture', faculty: 'A. Djouama', location: 'Amphi 6' },
+      { time: '10:10-11:40', module: 'Human Computer Interaction', type: 'Lecture', faculty: 'K. Heraguemi', location: 'Amphi 5' },
+      { time: '11:50-13:20', module: 'Introduction to Mobile Robotics', type: 'Lab', faculty: 'A.Khelloufi', location: 'Lab1' },
+      { time: '13:30-15:00', module: 'Introduction to Mobile Robotics', type: 'Lab', faculty: 'A.Khelloufi', location: 'Lab1' }
+    ],
+    Friday: [],
+    Saturday: []
+  };
   const [isInitialized, setIsInitialized] = useState(false);
   const [hasManualDate, setHasManualDate] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState('default');
@@ -44,7 +77,7 @@ const DailyRoutineTracker = () => {
     try {
       const storedTasks = JSON.parse(localStorage.getItem('dailyTasks') || '{}');
       const storedRegime = JSON.parse(localStorage.getItem('regime') || '[]');
-      const storedStudy = JSON.parse(localStorage.getItem('studyTimetable') || '[]');
+      const storedStudy = JSON.parse(localStorage.getItem('dailyStudyList') || '{}');
       const storedLocation = JSON.parse(localStorage.getItem('location') || 'null');
       const storedDate = localStorage.getItem('selectedDate');
       
@@ -54,8 +87,8 @@ const DailyRoutineTracker = () => {
       if (storedRegime && storedRegime.length > 0) {
         setRegime(storedRegime);
       }
-      if (storedStudy && storedStudy.length > 0) {
-        setStudyTimetable(storedStudy);
+      if (storedStudy && Object.keys(storedStudy).length > 0) {
+        setDailyStudyList(storedStudy);
       }
       if (storedLocation) {
         setLocation(storedLocation);
@@ -232,27 +265,28 @@ const DailyRoutineTracker = () => {
         }
       }
 
-      // Check study times
-      studyTimetable.forEach((item, index) => {
-        const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-        const currentDayName = dayNames[dayOfWeek];
+      // Check weekly schedule times
+      const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const currentDayName = dayNames[dayOfWeek];
+      const todaySchedule = weeklySchedule[currentDayName] || [];
+      
+      todaySchedule.forEach((item, index) => {
+        const [startTime] = item.time.split('-');
+        const [hour, minute] = startTime.split(':').map(Number);
+        const notificationKey = `${today}_class_${index}_${item.time}`;
         
-        if (item.day === currentDayName) {
-          const notificationKey = `${today}_study_${index}_${item.time}`;
-          if (!tasks[today]?.[`study_${index}`] && !sentNotifications[notificationKey]) {
-            const [hour, minute] = item.time.split(':').map(Number);
-            if (currentHour === hour && Math.abs(currentMinute - minute) <= 1) {
-              sendNotification(
-                `📚 Study Time: ${item.subject}`,
-                `Time to study ${item.subject}`,
-                notificationKey
-              );
-              setSentNotifications(prev => {
-                const updated = { ...prev, [notificationKey]: true };
-                localStorage.setItem('sentNotifications', JSON.stringify(updated));
-                return updated;
-              });
-            }
+        if (!tasks[today]?.[`class_${index}`] && !sentNotifications[notificationKey]) {
+          if (currentHour === hour && Math.abs(currentMinute - minute) <= 1) {
+            sendNotification(
+              `📚 Class: ${item.module}`,
+              `${item.type} - ${item.location} at ${item.time}`,
+              notificationKey
+            );
+            setSentNotifications(prev => {
+              const updated = { ...prev, [notificationKey]: true };
+              localStorage.setItem('sentNotifications', JSON.stringify(updated));
+              return updated;
+            });
           }
         }
       });
@@ -265,7 +299,7 @@ const DailyRoutineTracker = () => {
     const notificationInterval = setInterval(checkNotifications, 60000);
     
     return () => clearInterval(notificationInterval);
-  }, [currentTime, prayerTimes, tasks, studyTimetable, isInitialized, notificationPermission, sentNotifications]);
+  }, [currentTime, prayerTimes, tasks, isInitialized, notificationPermission, sentNotifications]);
 
   // Save tasks to storage (only after initialization)
   useEffect(() => {
@@ -291,12 +325,12 @@ const DailyRoutineTracker = () => {
   useEffect(() => {
     if (isInitialized) {
       try {
-        localStorage.setItem('studyTimetable', JSON.stringify(studyTimetable));
+        localStorage.setItem('dailyStudyList', JSON.stringify(dailyStudyList));
       } catch (error) {
-        console.error('Error saving study timetable to localStorage:', error);
+        console.error('Error saving daily study list to localStorage:', error);
       }
     }
-  }, [studyTimetable, isInitialized]);
+  }, [dailyStudyList, isInitialized]);
 
   // Save selected date
   useEffect(() => {
@@ -357,14 +391,20 @@ const DailyRoutineTracker = () => {
   };
 
   const addStudyItem = () => {
-    if (newStudyItem.day && newStudyItem.time && newStudyItem.subject) {
-      setStudyTimetable([...studyTimetable, { ...newStudyItem }]);
-      setNewStudyItem({ day: '', time: '', subject: '' });
+    if (newStudyItem.trim()) {
+      setDailyStudyList(prev => ({
+        ...prev,
+        [selectedDate]: [...(prev[selectedDate] || []), newStudyItem.trim()]
+      }));
+      setNewStudyItem('');
     }
   };
 
   const deleteStudyItem = (index) => {
-    setStudyTimetable(studyTimetable.filter((_, i) => i !== index));
+    setDailyStudyList(prev => ({
+      ...prev,
+      [selectedDate]: (prev[selectedDate] || []).filter((_, i) => i !== index)
+    }));
   };
 
   const getDayOfWeek = (dateStr) => {
@@ -668,12 +708,56 @@ const DailyRoutineTracker = () => {
             </div>
           </div>
 
-          {/* Study */}
+          {/* Weekly Schedule */}
+          <div className="bg-white rounded-3xl shadow-xl p-6">
+            <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+              <BookOpen className="text-indigo-600" />
+              Weekly Schedule - {getDayOfWeek(selectedDate)}
+            </h2>
+            <div className="space-y-3">
+              {weeklySchedule[getDayOfWeek(selectedDate)] && weeklySchedule[getDayOfWeek(selectedDate)].length > 0 ? (
+                weeklySchedule[getDayOfWeek(selectedDate)].map((classItem, index) => (
+                  <div key={index} className="p-4 bg-indigo-50 rounded-xl border-2 border-indigo-200">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Clock className="w-4 h-4 text-indigo-600" />
+                          <span className="font-semibold text-indigo-700">{classItem.time}</span>
+                          <span className="px-2 py-1 bg-indigo-200 text-indigo-700 text-xs rounded-full">
+                            {classItem.type}
+                          </span>
+                        </div>
+                        <h3 className="font-bold text-gray-800 mb-1">{classItem.module}</h3>
+                        <p className="text-sm text-gray-600">Faculty: {classItem.faculty}</p>
+                        <p className="text-sm text-gray-600">Location: {classItem.location}</p>
+                      </div>
+                      <button
+                        onClick={() => toggleTask(selectedDate, `class_${index}`)}
+                        className="p-1 ml-2"
+                      >
+                        {tasks[selectedDate]?.[`class_${index}`] ? (
+                          <CheckCircle className="w-6 h-6 text-green-600" />
+                        ) : (
+                          <Circle className="w-6 h-6 text-gray-400" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="p-4 bg-gray-100 rounded-xl text-center text-gray-600">
+                  No classes scheduled for {getDayOfWeek(selectedDate)}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Daily Study List */}
           <div className="bg-white rounded-3xl shadow-xl p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
                 <BookOpen className="text-indigo-600" />
-                Study Schedule
+                Daily Study List
               </h2>
               <button
                 onClick={() => setEditingStudy(!editingStudy)}
@@ -684,77 +768,54 @@ const DailyRoutineTracker = () => {
             </div>
 
             {editingStudy && (
-              <div className="mb-4 space-y-2">
-                <select
-                  value={newStudyItem.day}
-                  onChange={(e) => setNewStudyItem({...newStudyItem, day: e.target.value})}
-                  className="w-full p-2 border-2 border-indigo-200 rounded-lg focus:outline-none focus:border-indigo-500"
-                >
-                  <option value="">Select day...</option>
-                  {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map(day => (
-                    <option key={day} value={day}>{day}</option>
-                  ))}
-                </select>
-                <input
-                  type="time"
-                  value={newStudyItem.time}
-                  onChange={(e) => setNewStudyItem({...newStudyItem, time: e.target.value})}
-                  className="w-full p-2 border-2 border-indigo-200 rounded-lg focus:outline-none focus:border-indigo-500"
-                />
+              <div className="mb-4 flex gap-2">
                 <input
                   type="text"
-                  value={newStudyItem.subject}
-                  onChange={(e) => setNewStudyItem({...newStudyItem, subject: e.target.value})}
-                  placeholder="Subject..."
-                  className="w-full p-2 border-2 border-indigo-200 rounded-lg focus:outline-none focus:border-indigo-500"
+                  value={newStudyItem}
+                  onChange={(e) => setNewStudyItem(e.target.value)}
+                  placeholder="What do you want to study today?"
+                  className="flex-1 p-2 border-2 border-indigo-200 rounded-lg focus:outline-none focus:border-indigo-500"
+                  onKeyPress={(e) => e.key === 'Enter' && addStudyItem()}
                 />
                 <button
                   onClick={addStudyItem}
-                  className="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center justify-center gap-2"
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
                 >
                   <Plus className="w-5 h-5" />
-                  Add Study Session
                 </button>
               </div>
             )}
 
             <div className="space-y-2">
-              {studyTimetable.filter(item => item.day === getDayOfWeek(selectedDate)).length > 0 ? (
-                studyTimetable
-                  .filter(item => item.day === getDayOfWeek(selectedDate))
-                  .map((item, index) => (
-                    <div key={index} className="p-3 bg-indigo-50 rounded-xl">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-semibold text-indigo-700">{item.subject}</p>
-                          <p className="text-sm text-gray-600">{item.time}</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {editingStudy && (
-                            <button
-                              onClick={() => deleteStudyItem(studyTimetable.indexOf(item))}
-                              className="p-1 hover:bg-red-100 rounded transition-colors"
-                            >
-                              <Trash2 className="w-4 h-4 text-red-600" />
-                            </button>
-                          )}
-                          <button
-                            onClick={() => toggleTask(selectedDate, `study_${index}`)}
-                            className="p-1"
-                          >
-                            {tasks[selectedDate]?.[`study_${index}`] ? (
-                              <CheckCircle className="w-6 h-6 text-green-600" />
-                            ) : (
-                              <Circle className="w-6 h-6 text-gray-400" />
-                            )}
-                          </button>
-                        </div>
-                      </div>
+              {dailyStudyList[selectedDate] && dailyStudyList[selectedDate].length > 0 ? (
+                dailyStudyList[selectedDate].map((item, index) => (
+                  <div key={index} className="p-3 bg-indigo-50 rounded-xl flex items-center justify-between">
+                    <span className="text-gray-800">{item}</span>
+                    <div className="flex items-center gap-2">
+                      {editingStudy && (
+                        <button
+                          onClick={() => deleteStudyItem(index)}
+                          className="p-1 hover:bg-red-100 rounded transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4 text-red-600" />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => toggleTask(selectedDate, `study_${index}`)}
+                        className="p-1"
+                      >
+                        {tasks[selectedDate]?.[`study_${index}`] ? (
+                          <CheckCircle className="w-6 h-6 text-green-600" />
+                        ) : (
+                          <Circle className="w-6 h-6 text-gray-400" />
+                        )}
+                      </button>
                     </div>
-                  ))
+                  </div>
+                ))
               ) : (
                 <div className="p-4 bg-gray-100 rounded-xl text-center text-gray-600">
-                  No study sessions today
+                  {editingStudy ? 'Add items to your study list' : 'No study items for this day'}
                 </div>
               )}
             </div>
@@ -776,7 +837,8 @@ const DailyRoutineTracker = () => {
                             Object.keys(prayerTimes).length + 3 + 
                             (['Sunday', 'Wednesday', 'Saturday'].includes(getDayOfWeek(selectedDate)) ? 1 : 0) +
                             (getDayOfWeek(selectedDate) === 'Friday' ? 1 : 0) +
-                            studyTimetable.filter(item => item.day === getDayOfWeek(selectedDate)).length,
+                            (weeklySchedule[getDayOfWeek(selectedDate)]?.length || 0) +
+                            (dailyStudyList[selectedDate]?.length || 0),
                             1
                           )) *
                         100
@@ -791,7 +853,8 @@ const DailyRoutineTracker = () => {
                     Object.keys(prayerTimes).length + 3 + 
                     (['Sunday', 'Wednesday', 'Saturday'].includes(getDayOfWeek(selectedDate)) ? 1 : 0) +
                     (getDayOfWeek(selectedDate) === 'Friday' ? 1 : 0) +
-                    studyTimetable.filter(item => item.day === getDayOfWeek(selectedDate)).length
+                    (weeklySchedule[getDayOfWeek(selectedDate)]?.length || 0) +
+                    (dailyStudyList[selectedDate]?.length || 0)
                   }`
                 : '0 / 0'}
             </span>
