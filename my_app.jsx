@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CheckCircle, Circle, Plus, Trash2, Edit2, Save, X, Calendar, Clock, Moon, Sun, Utensils, Dumbbell, Apple, Heart, BookOpen } from 'lucide-react';
+import { CheckCircle, Circle, Plus, Trash2, Edit2, Save, X, Calendar, Clock, Moon, Sun, Utensils, Dumbbell, Apple, Heart, BookOpen, Bell, BellOff } from 'lucide-react';
 
 const DailyRoutineTracker = () => {
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -14,10 +14,30 @@ const DailyRoutineTracker = () => {
   const [newStudyItem, setNewStudyItem] = useState({ day: '', time: '', subject: '' });
   const [isInitialized, setIsInitialized] = useState(false);
   const [hasManualDate, setHasManualDate] = useState(false);
+  const [notificationPermission, setNotificationPermission] = useState('default');
+  const [sentNotifications, setSentNotifications] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('sentNotifications') || '{}');
+    } catch {
+      return {};
+    }
+  });
   const [selectedDate, setSelectedDate] = useState(() => {
     const stored = localStorage.getItem('selectedDate');
     return stored || new Date().toISOString().split('T')[0];
   });
+
+  // Request notification permission
+  useEffect(() => {
+    if ('Notification' in window) {
+      setNotificationPermission(Notification.permission);
+      if (Notification.permission === 'default') {
+        Notification.requestPermission().then(permission => {
+          setNotificationPermission(permission);
+        });
+      }
+    }
+  }, []);
 
   // Initialize data from storage
   useEffect(() => {
@@ -89,6 +109,164 @@ const DailyRoutineTracker = () => {
     return () => clearInterval(timer);
   }, []);
 
+  // Helper function to send notification
+  const sendNotification = (title, body, tag) => {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      const notification = new Notification(title, {
+        body: body,
+        icon: '/favicon.ico',
+        tag: tag, // Prevents duplicate notifications
+        requireInteraction: false,
+      });
+      
+      // Auto-close after 5 seconds
+      setTimeout(() => notification.close(), 5000);
+    }
+  };
+
+  // Check and send notifications for tasks
+  useEffect(() => {
+    if (!isInitialized || notificationPermission !== 'granted') return;
+    
+    const checkNotifications = () => {
+      const now = new Date();
+      const today = now.toISOString().split('T')[0];
+      const currentHour = now.getHours();
+      const currentMinute = now.getMinutes();
+      const currentTimeStr = `${String(currentHour).padStart(2, '0')}:${String(currentMinute).padStart(2, '0')}`;
+      
+      // Check if it's a new day - reset sent notifications
+      const lastNotificationDate = localStorage.getItem('lastNotificationDate');
+      if (lastNotificationDate !== today) {
+        setSentNotifications({});
+        localStorage.setItem('lastNotificationDate', today);
+        localStorage.setItem('sentNotifications', JSON.stringify({}));
+      }
+
+      // Check prayer times
+      Object.entries(prayerTimes).forEach(([prayer, time]) => {
+        const taskId = `pray_${prayer}`;
+        const notificationKey = `${today}_${taskId}_${time}`;
+        
+        // Check if task is not completed and time matches (within 1 minute window)
+        if (!tasks[today]?.[taskId] && !sentNotifications[notificationKey]) {
+          const [hour, minute] = time.split(':').map(Number);
+          if (currentHour === hour && Math.abs(currentMinute - minute) <= 1) {
+            sendNotification(
+              `⏰ Prayer Time: ${prayer}`,
+              `It's time for ${prayer} prayer`,
+              notificationKey
+            );
+            setSentNotifications(prev => {
+              const updated = { ...prev, [notificationKey]: true };
+              localStorage.setItem('sentNotifications', JSON.stringify(updated));
+              return updated;
+            });
+          }
+        }
+      });
+
+      // Check meal times
+      const mealTimes = [
+        { id: 'breakfast', time: '08:00', name: 'Breakfast' },
+        { id: 'lunch', time: '13:00', name: 'Lunch' },
+        { id: 'dinner', time: '20:00', name: 'Dinner' }
+      ];
+
+      mealTimes.forEach(({ id, time, name }) => {
+        const notificationKey = `${today}_${id}_${time}`;
+        if (!tasks[today]?.[id] && !sentNotifications[notificationKey]) {
+          const [hour, minute] = time.split(':').map(Number);
+          if (currentHour === hour && Math.abs(currentMinute - minute) <= 1) {
+            sendNotification(
+              `🍽️ Meal Time: ${name}`,
+              `Time to have ${name.toLowerCase()}`,
+              notificationKey
+            );
+            setSentNotifications(prev => {
+              const updated = { ...prev, [notificationKey]: true };
+              localStorage.setItem('sentNotifications', JSON.stringify(updated));
+              return updated;
+            });
+          }
+        }
+      });
+
+      // Check sport time (Sunday, Wednesday, Saturday at 21:00)
+      const dayOfWeek = now.getDay();
+      const sportDays = [0, 3, 6]; // Sunday, Wednesday, Saturday
+      if (sportDays.includes(dayOfWeek)) {
+        const notificationKey = `${today}_sport_21:00`;
+        if (!tasks[today]?.sport && !sentNotifications[notificationKey]) {
+          if (currentHour === 21 && Math.abs(currentMinute - 0) <= 1) {
+            sendNotification(
+              `💪 Workout Time`,
+              `Time for your workout session!`,
+              notificationKey
+            );
+            setSentNotifications(prev => {
+              const updated = { ...prev, [notificationKey]: true };
+              localStorage.setItem('sentNotifications', JSON.stringify(updated));
+              return updated;
+            });
+          }
+        }
+      }
+
+      // Check skincare time (Friday at 09:00)
+      if (dayOfWeek === 5) { // Friday
+        const notificationKey = `${today}_skincare_09:00`;
+        if (!tasks[today]?.skincare && !sentNotifications[notificationKey]) {
+          if (currentHour === 9 && Math.abs(currentMinute - 0) <= 1) {
+            sendNotification(
+              `💆 Skincare Routine`,
+              `Time for your skincare routine!`,
+              notificationKey
+            );
+            setSentNotifications(prev => {
+              const updated = { ...prev, [notificationKey]: true };
+              localStorage.setItem('sentNotifications', JSON.stringify(updated));
+              return updated;
+            });
+          }
+        }
+      }
+
+      // Check study times
+      studyTimetable.forEach((item, index) => {
+        const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        const currentDayName = dayNames[dayOfWeek];
+        
+        if (item.day === currentDayName) {
+          const notificationKey = `${today}_study_${index}_${item.time}`;
+          if (!tasks[today]?.[`study_${index}`] && !sentNotifications[notificationKey]) {
+            const [hour, minute] = item.time.split(':').map(Number);
+            if (currentHour === hour && Math.abs(currentMinute - minute) <= 1) {
+              sendNotification(
+                `📚 Study Time: ${item.subject}`,
+                `Time to study ${item.subject}`,
+                notificationKey
+              );
+              setSentNotifications(prev => {
+                const updated = { ...prev, [notificationKey]: true };
+                localStorage.setItem('sentNotifications', JSON.stringify(updated));
+                return updated;
+              });
+            }
+          }
+        }
+      });
+    };
+
+    // Check immediately
+    checkNotifications();
+    
+    // Check every minute
+    const notificationInterval = setInterval(checkNotifications, 60000);
+    
+    return () => clearInterval(notificationInterval);
+  }, [currentTime, prayerTimes, tasks, studyTimetable, isInitialized, notificationPermission, sentNotifications]);
+
   // Save tasks to storage (only after initialization)
   useEffect(() => {
     if (isInitialized) {
@@ -130,6 +308,17 @@ const DailyRoutineTracker = () => {
       }
     }
   }, [selectedDate, isInitialized]);
+
+  // Save sent notifications
+  useEffect(() => {
+    if (isInitialized) {
+      try {
+        localStorage.setItem('sentNotifications', JSON.stringify(sentNotifications));
+      } catch (error) {
+        console.error('Error saving sent notifications to localStorage:', error);
+      }
+    }
+  }, [sentNotifications, isInitialized]);
 
   // Auto-sync date with today's date unless user chose custom date
   useEffect(() => {
@@ -263,7 +452,35 @@ const DailyRoutineTracker = () => {
                 {currentTime.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
               </p>
             </div>
-            <Calendar className="w-12 h-12 text-indigo-600" />
+            <div className="flex items-center gap-3">
+              {notificationPermission === 'granted' ? (
+                <div className="flex items-center gap-2 text-green-600" title="Notifications enabled">
+                  <Bell className="w-6 h-6" />
+                  <span className="text-sm font-medium">Enabled</span>
+                </div>
+              ) : notificationPermission === 'denied' ? (
+                <div className="flex items-center gap-2 text-red-600" title="Notifications blocked">
+                  <BellOff className="w-6 h-6" />
+                  <span className="text-sm font-medium">Blocked</span>
+                </div>
+              ) : (
+                <button
+                  onClick={() => {
+                    if ('Notification' in window) {
+                      Notification.requestPermission().then(permission => {
+                        setNotificationPermission(permission);
+                      });
+                    }
+                  }}
+                  className="flex items-center gap-2 px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                  title="Enable notifications"
+                >
+                  <Bell className="w-5 h-5" />
+                  <span className="text-sm font-medium">Enable</span>
+                </button>
+              )}
+              <Calendar className="w-12 h-12 text-indigo-600" />
+            </div>
           </div>
           
           <input
