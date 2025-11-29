@@ -13,6 +13,7 @@ const DailyRoutineTracker = () => {
   const [newRegimeItem, setNewRegimeItem] = useState('');
   const [newStudyItem, setNewStudyItem] = useState({ day: '', time: '', subject: '' });
   const [isInitialized, setIsInitialized] = useState(false);
+  const [hasManualDate, setHasManualDate] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() => {
     const stored = localStorage.getItem('selectedDate');
     return stored || new Date().toISOString().split('T')[0];
@@ -39,8 +40,10 @@ const DailyRoutineTracker = () => {
       if (storedLocation) {
         setLocation(storedLocation);
       }
+      const todayStr = new Date().toISOString().split('T')[0];
       if (storedDate) {
         setSelectedDate(storedDate);
+        setHasManualDate(storedDate !== todayStr);
       }
       
       // Get user location
@@ -127,6 +130,21 @@ const DailyRoutineTracker = () => {
       }
     }
   }, [selectedDate, isInitialized]);
+
+  // Auto-sync date with today's date unless user chose custom date
+  useEffect(() => {
+    if (!isInitialized || hasManualDate) return;
+    const todayStr = new Date().toISOString().split('T')[0];
+    if (selectedDate !== todayStr) {
+      setSelectedDate(todayStr);
+    }
+  }, [currentTime, hasManualDate, isInitialized, selectedDate]);
+
+  const handleDateChange = (value) => {
+    setSelectedDate(value);
+    const todayStr = new Date().toISOString().split('T')[0];
+    setHasManualDate(value !== todayStr);
+  };
 
   const toggleTask = (date, taskId) => {
     setTasks(prev => ({
@@ -251,7 +269,7 @@ const DailyRoutineTracker = () => {
           <input
             type="date"
             value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
+            onChange={(e) => handleDateChange(e.target.value)}
             className="w-full p-3 border-2 border-indigo-200 rounded-xl focus:outline-none focus:border-indigo-500"
           />
         </div>
